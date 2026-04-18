@@ -1,0 +1,12 @@
+body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: white; margin: 0; padding: 2rem; }
+.container { max-width: 600px; margin: 0 auto; text-align: center; }
+h1 { font-size: 3rem; margin-bottom: 0; background: linear-gradient(45deg, #ff6b6b, #4ecdc4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.mic-container { margin: 2rem 0; }
+.mic-btn, .stop-btn, .send-btn { padding: 1rem 2rem; border: none; border-radius: 50px; font-size: 1.1rem; cursor: pointer; margin: 0 0.5rem; }
+.mic-btn { background: #ff4757; color: white; }
+.stop-btn { background: #2f3542; color: white; }
+.send-btn { background: #00b894; color: white; font-weight: bold; }
+.box { background: #1e1e1e; border-radius: 12px; padding: 1.5rem; margin: 1rem 0; min-height: 100px; text-align: left; font-family: monospace; }
+.messy { border-left: 4px solid #ff4757; }
+.polished { border-left: 4px solid #00b894; }
+#status { font-size: 1.2rem; margin-top: 1rem; color: #00b894; }

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Aero - Voice to Action</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Aero</h1>
+    <p>Turn messy thoughts into polished emails</p>
+
+    <div class="mic-container">
+      <button id="recordBtn" class="mic-btn">🎤 Speak</button>
+      <button id="stopBtn" class="stop-btn" disabled>⏹ Stop</button>
+    </div>
+
+    <div id="transcript" class="box messy">Messy speech appears here...</div>
+    <div id="refined" class="box polished">Polished email appears here...</div>
+
+    <button id="sendBtn" class="send-btn" disabled>Draft Email →</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    let recognition;
+
+    const recordBtn = document.getElementById('recordBtn');
+    const stopBtn   = document.getElementById('stopBtn');
+    const transcriptBox = document.getElementById('transcript');
+    const refinedBox    = document.getElementById('refined');
+    const sendBtn = document.getElementById('sendBtn');
+    const status  = document.getElementById('status');
+
+    // Browser speech recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        transcriptBox.textContent = transcript;
+        refine(transcript);
+      };
+
+      recognition.onerror = (event) => {
+        setStatus(`Mic error: ${event.error}`, 'error');
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+
+      recognition.onend = () => {
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+    } else {
+      setStatus('Speech recognition not supported. Use Chrome.', 'error');
+      recordBtn.disabled = true;
+    }
+
+    recordBtn.onclick = () => {
+      recognition.start();
+      recordBtn.disabled = true;
+      stopBtn.disabled = false;
+      setStatus('Listening...');
+    };
+
+    stopBtn.onclick = () => {
+      recognition.stop();
+    };
+
+    async function refine(transcript) {
+      setStatus('Refining...');
+      try {
+        const res = await fetch('/refine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript }),
+        });
+        if (!res.ok) throw new Error(`/refine failed: ${res.status}`);
+        const { refined } = await res.json();
+        refinedBox.textContent = refined;
+        sendBtn.disabled = false;
+        setStatus('');
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    sendBtn.onclick = async () => {
+      sendBtn.disabled = true;
+      setStatus('Drafting email...');
+
+      try {
+        // Step 1: TinyFish action
+        const actionRes = await fetch('/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refined: refinedBox.textContent }),
+        });
+        if (!actionRes.ok) throw new Error(`/action failed: ${actionRes.status}`);
+
+        setStatus('Email drafted! ✅ Playing confirmation...');
+
+        // Step 2: Gradium voice confirmation — returns raw WAV audio
+        const confirmRes = await fetch('/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refined: refinedBox.textContent }),
+        });
+        if (!confirmRes.ok) throw new Error(`/confirm failed: ${confirmRes.status}`);
+
+        const audioBlob = await confirmRes.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        new Audio(audioUrl).play();
+
+        setStatus('✅ Done! Gradium confirmed by voice.');
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    };
+
+    function setStatus(msg, type = '') {
+      status.textContent = msg;
+      status.style.color = type === 'error' ? '#ff4757' : '#00b894';
+    }
+  </script>
+</body>
+</html>
