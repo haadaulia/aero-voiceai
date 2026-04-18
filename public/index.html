@@ -106,80 +106,104 @@
   </main>
 
   <script>
+    let isRecording = false;
+    let finalTranscript = '';
     let recognition;
-    let fullTranscript = '';
 
-    const recordBtn = document.getElementById('recordBtn');
-    const stopBtn   = document.getElementById('stopBtn');
+    const recordBtn    = document.getElementById('recordBtn');
+    const stopBtn      = document.getElementById('stopBtn');
     const transcriptBox = document.getElementById('transcript');
-    const refinedBox    = document.getElementById('refined');
-    const sendBtn  = document.getElementById('sendBtn');
-    const status   = document.getElementById('status');
-    const micLabel = document.getElementById('mic-label');
+    const refinedBox   = document.getElementById('refined');
+    const sendBtn      = document.getElementById('sendBtn');
+    const status       = document.getElementById('status');
+    const micLabel     = document.getElementById('mic-label');
 
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    function createRecognition() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SR();
-      recognition.continuous = true;       // keeps listening through pauses
-      recognition.interimResults = true;   // shows words as you speak
+      if (!SR) return null;
+      const r = new SR();
+      r.continuous = true;
+      r.interimResults = true;
+      r.lang = 'en-US';
 
-      recognition.onresult = (event) => {
+      r.onresult = (event) => {
         let interim = '';
-        fullTranscript = '';
-
+        finalTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
-            fullTranscript += event.results[i][0].transcript + ' ';
+            finalTranscript += event.results[i][0].transcript + ' ';
           } else {
             interim += event.results[i][0].transcript;
           }
         }
-
-        // Show combined final + interim in real time
-        transcriptBox.textContent = (fullTranscript + interim).trim();
+        transcriptBox.textContent = (finalTranscript + interim).trim();
         transcriptBox.classList.add('has-content');
       };
 
-      recognition.onerror = (event) => {
-        // Ignore 'no-speech' — it fires on pauses with continuous mode
+      r.onerror = (event) => {
         if (event.error === 'no-speech') return;
         setStatus(`mic error: ${event.error}`, 'error');
-        stopRecording();
+        forceStop();
       };
 
-      // With continuous=true, onend only fires when we call .stop()
-      recognition.onend = () => {
-        stopRecording();
-        if (fullTranscript.trim()) {
-          refine(fullTranscript.trim());
+      // Chrome kills continuous recognition after ~60s of silence
+      // restart it automatically if we're still supposed to be recording
+      r.onend = () => {
+        if (isRecording) {
+          try { r.start(); } catch(e) {}
         }
       };
 
-    } else {
+      return r;
+    }
+
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
       setStatus('use Chrome for speech recognition', 'error');
       recordBtn.disabled = true;
     }
 
     recordBtn.onclick = () => {
-      fullTranscript = '';
+      finalTranscript = '';
       transcriptBox.textContent = 'listening...';
       transcriptBox.classList.remove('has-content');
       refinedBox.textContent = 'your professional email appears here...';
       refinedBox.classList.remove('has-content');
       sendBtn.disabled = true;
+      setStatus('');
 
-      recognition.start();
+      recognition = createRecognition();
+      isRecording = true;
+
+      try {
+        recognition.start();
+      } catch(e) {
+        setStatus('could not start mic', 'error');
+        return;
+      }
+
       recordBtn.classList.add('recording');
       recordBtn.disabled = true;
       stopBtn.disabled = false;
-      micLabel.textContent = 'listening — tap stop when done';
-      setStatus('');
+      micLabel.textContent = 'listening — press stop when done';
     };
 
-    // User manually stops — triggers onend which calls refine
-    stopBtn.onclick = () => recognition.stop();
+    stopBtn.onclick = () => {
+      if (!isRecording) return;
+      forceStop();
+      const text = finalTranscript.trim() || transcriptBox.textContent.trim();
+      if (text && text !== 'listening...') {
+        refine(text);
+      } else {
+        setStatus('nothing captured — try again', 'error');
+      }
+    };
 
-    function stopRecording() {
+    function forceStop() {
+      isRecording = false;
+      if (recognition) {
+        try { recognition.stop(); } catch(e) {}
+        try { recognition.abort(); } catch(e) {}
+      }
       recordBtn.classList.remove('recording');
       recordBtn.disabled = false;
       stopBtn.disabled = true;

@@ -28,10 +28,26 @@ app.post('/refine', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `You turn messy, rambling spoken thoughts into a single polished professional email.
-Keep it short — 2-3 sentences max.
-Preserve the intent, urgency, and tone the person wants.
-Output ONLY the email body, nothing else. No subject line, no sign-off, no explanation.`
+            content: `You are an expert email writer. Your job is to turn messy, rambling spoken thoughts into a short, polished, professional email body.
+
+Rules:
+- Extract and USE any names mentioned (e.g. "email john" → address it to John)
+- Extract and USE any specific topics, documents, deadlines, or context mentioned
+- Match the urgency — if they say urgent/ASAP/today, make the email clearly urgent but still polite
+- Match the tone — if they say "don't be rude" or "be nice", keep it warm and professional
+- Keep it SHORT — 2-3 sentences max
+- Output ONLY the email body. No subject line. No "Hi," greeting on its own line. No sign-off. No explanation. Just the message itself.
+- Start directly with "Hi [name]," if a name was mentioned, otherwise "Hi there,"
+
+Examples:
+Input: "uh email john... still waiting on that report... kinda urgent... don't sound rude"
+Output: Hi John, just following up on the report — would you be able to share it today? It would really help us stay on track, thanks so much.
+
+Input: "need to tell sarah the meeting is moved to thursday at 3pm"
+Output: Hi Sarah, just a quick heads up that the meeting has been moved to Thursday at 3pm. See you then!
+
+Input: "message the team that the deadline is pushed to next friday because of the client feedback"
+Output: Hi team, wanted to let you know the deadline has been pushed to next Friday due to client feedback. More details to follow — thanks for your patience.`
           },
           {
             role: 'user',
@@ -39,7 +55,7 @@ Output ONLY the email body, nothing else. No subject line, no sign-off, no expla
           }
         ],
         max_tokens: 200,
-        temperature: 0.5,
+        temperature: 0.4,
       }),
     });
 
@@ -72,8 +88,8 @@ app.post('/confirm', async (req, res) => {
   }
 
   const confirmationText = refined
-    ? `I've drafted a polite follow-up email. It says: ${refined}`
-    : `I've drafted a polite but urgent follow-up email to John regarding the report.`;
+    ? `I've drafted your email. It says: ${refined}`
+    : `I've drafted a polite but urgent follow-up email.`;
 
   try {
     const response = await fetch('https://api.gradium.ai/api/post/speech/tts', {
@@ -84,7 +100,7 @@ app.post('/confirm', async (req, res) => {
       },
       body: JSON.stringify({
         text: confirmationText,
-        voice_id: 'YTpq7expH9539ERJ', // Emma — clear US English
+        voice_id: 'YTpq7expH9539ERJ',
         output_format: 'wav',
         only_audio: true,
       }),
