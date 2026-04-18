@@ -105,168 +105,175 @@
 
   </main>
 
-  <script>
-    let isRecording = false;
-    let finalTranscript = '';
-    let recognition;
+<script>
+  let isRecording = false;
+  let finalTranscript = '';
+  let recognition;
+  let silenceTimer;
 
-    const recordBtn    = document.getElementById('recordBtn');
-    const stopBtn      = document.getElementById('stopBtn');
-    const transcriptBox = document.getElementById('transcript');
-    const refinedBox   = document.getElementById('refined');
-    const sendBtn      = document.getElementById('sendBtn');
-    const status       = document.getElementById('status');
-    const micLabel     = document.getElementById('mic-label');
+  const recordBtn     = document.getElementById('recordBtn');
+  const stopBtn       = document.getElementById('stopBtn');
+  const transcriptBox = document.getElementById('transcript');
+  const refinedBox    = document.getElementById('refined');
+  const sendBtn       = document.getElementById('sendBtn');
+  const status        = document.getElementById('status');
+  const micLabel      = document.getElementById('mic-label');
 
-    function createRecognition() {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return null;
-      const r = new SR();
-      r.continuous = true;
-      r.interimResults = true;
-      r.lang = 'en-US';
+  // Hide the stop button — we don't need it anymore
+  stopBtn.style.display = 'none';
 
-      r.onresult = (event) => {
-        let interim = '';
-        finalTranscript = '';
-        for (let i = 0; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
-          } else {
-            interim += event.results[i][0].transcript;
-          }
-        }
-        transcriptBox.textContent = (finalTranscript + interim).trim();
-        transcriptBox.classList.add('has-content');
-      };
+  function createRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = 'en-US';
 
-      r.onerror = (event) => {
-        if (event.error === 'no-speech') return;
-        setStatus(`mic error: ${event.error}`, 'error');
-        forceStop();
-      };
-
-      // Chrome kills continuous recognition after ~60s of silence
-      // restart it automatically if we're still supposed to be recording
-      r.onend = () => {
-        if (isRecording) {
-          try { r.start(); } catch(e) {}
-        }
-      };
-
-      return r;
-    }
-
-    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-      setStatus('use Chrome for speech recognition', 'error');
-      recordBtn.disabled = true;
-    }
-
-    recordBtn.onclick = () => {
+    r.onresult = (event) => {
+      let interim = '';
       finalTranscript = '';
-      transcriptBox.textContent = 'listening...';
-      transcriptBox.classList.remove('has-content');
-      refinedBox.textContent = 'your professional email appears here...';
-      refinedBox.classList.remove('has-content');
-      sendBtn.disabled = true;
-      setStatus('');
-
-      recognition = createRecognition();
-      isRecording = true;
-
-      try {
-        recognition.start();
-      } catch(e) {
-        setStatus('could not start mic', 'error');
-        return;
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
       }
+      transcriptBox.textContent = (finalTranscript + interim).trim();
+      transcriptBox.classList.add('has-content');
 
-      recordBtn.classList.add('recording');
-      recordBtn.disabled = true;
-      stopBtn.disabled = false;
-      micLabel.textContent = 'listening — press stop when done';
+      // Reset the 5-second silence timer every time speech is detected
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(autoStop, 5000);
     };
 
-    stopBtn.onclick = () => {
-      if (!isRecording) return;
+    r.onerror = (event) => {
+      if (event.error === 'no-speech') return;
+      setStatus('mic error: ' + event.error, 'error');
       forceStop();
-      const text = finalTranscript.trim() || transcriptBox.textContent.trim();
-      if (text && text !== 'listening...') {
-        refine(text);
-      } else {
-        setStatus('nothing captured — try again', 'error');
+    };
+
+    r.onend = () => {
+      if (isRecording) {
+        try { r.start(); } catch(e) {}
       }
     };
 
-    function forceStop() {
-      isRecording = false;
-      if (recognition) {
-        try { recognition.stop(); } catch(e) {}
-        try { recognition.abort(); } catch(e) {}
-      }
-      recordBtn.classList.remove('recording');
-      recordBtn.disabled = false;
-      stopBtn.disabled = true;
-      micLabel.textContent = 'tap to speak';
+    return r;
+  }
+
+  if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+    setStatus('use Chrome for speech recognition', 'error');
+    recordBtn.disabled = true;
+  }
+
+  recordBtn.onclick = () => {
+    if (isRecording) {
+      // Second press = manual stop
+      autoStop();
+      return;
     }
 
-    async function refine(transcript) {
-      setStatus('synthesising...', 'loading');
-      refinedBox.textContent = '...';
-      try {
-        const res = await fetch('/refine', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transcript }),
-        });
-        if (!res.ok) throw new Error(`/refine failed: ${res.status}`);
-        const { refined } = await res.json();
-        refinedBox.textContent = refined;
-        refinedBox.classList.add('has-content');
-        sendBtn.disabled = false;
-        setStatus('');
-      } catch (err) {
-        setStatus(`error: ${err.message}`, 'error');
-      }
+    finalTranscript = '';
+    transcriptBox.textContent = 'listening...';
+    transcriptBox.classList.remove('has-content');
+    refinedBox.textContent = 'your professional email appears here...';
+    refinedBox.classList.remove('has-content');
+    sendBtn.disabled = true;
+    setStatus('');
+
+    recognition = createRecognition();
+    isRecording = true;
+
+    try {
+      recognition.start();
+    } catch(e) {
+      setStatus('could not start mic', 'error');
+      return;
     }
 
-    sendBtn.onclick = async () => {
-      sendBtn.disabled = true;
-      setStatus('executing workflow...', 'loading');
+    recordBtn.classList.add('recording');
+    micLabel.textContent = 'listening — tap again or wait 5s to stop';
 
-      try {
-        await fetch('/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refined: refinedBox.textContent }),
-        });
+    // Auto-stop after 5s of initial silence too
+    silenceTimer = setTimeout(autoStop, 5000);
+  };
 
-        setStatus('email drafted — playing gradium confirmation...', 'loading');
-
-        const confirmRes = await fetch('/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refined: refinedBox.textContent }),
-        });
-
-        if (!confirmRes.ok) throw new Error(`/confirm failed: ${confirmRes.status}`);
-
-        const audioBlob = await confirmRes.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        new Audio(audioUrl).play();
-
-        setStatus('✓ done', 'success');
-      } catch (err) {
-        setStatus(`error: ${err.message}`, 'error');
-      } finally {
-        sendBtn.disabled = false;
-      }
-    };
-
-    function setStatus(msg, type = '') {
-      status.textContent = msg;
-      status.className = 'status ' + type;
+  function autoStop() {
+    clearTimeout(silenceTimer);
+    if (!isRecording) return;
+    forceStop();
+    const text = finalTranscript.trim() || transcriptBox.textContent.trim();
+    if (text && text !== 'listening...') {
+      refine(text);
+    } else {
+      setStatus('nothing captured — try again', 'error');
     }
-  </script>
+  }
+
+  function forceStop() {
+    isRecording = false;
+    clearTimeout(silenceTimer);
+    if (recognition) {
+      try { recognition.stop(); } catch(e) {}
+      try { recognition.abort(); } catch(e) {}
+    }
+    recordBtn.classList.remove('recording');
+    recordBtn.disabled = false;
+    micLabel.textContent = 'tap to speak';
+  }
+
+  async function refine(transcript) {
+    setStatus('synthesising...', 'loading');
+    refinedBox.textContent = '...';
+    try {
+      const res = await fetch('/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript }),
+      });
+      if (!res.ok) throw new Error('/refine failed: ' + res.status);
+      const { refined } = await res.json();
+      refinedBox.textContent = refined;
+      refinedBox.classList.add('has-content');
+      sendBtn.disabled = false;
+      setStatus('');
+    } catch (err) {
+      setStatus('error: ' + err.message, 'error');
+    }
+  }
+
+  sendBtn.onclick = async () => {
+    sendBtn.disabled = true;
+    setStatus('executing workflow...', 'loading');
+    try {
+      await fetch('/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refined: refinedBox.textContent }),
+      });
+      setStatus('email drafted — playing gradium confirmation...', 'loading');
+      const confirmRes = await fetch('/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refined: refinedBox.textContent }),
+      });
+      if (!confirmRes.ok) throw new Error('/confirm failed: ' + confirmRes.status);
+      const audioBlob = await confirmRes.blob();
+      new Audio(URL.createObjectURL(audioBlob)).play();
+      setStatus('✓ done', 'success');
+    } catch (err) {
+      setStatus('error: ' + err.message, 'error');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  };
+
+  function setStatus(msg, type = '') {
+    status.textContent = msg;
+    status.className = 'status ' + type;
+  }
+</script>
 </body>
 </html>
