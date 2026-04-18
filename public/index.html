@@ -1,25 +1,109 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Aero - Voice to Action</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aero — Voice to Action</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Aero</h1>
-    <p>Turn messy thoughts into polished emails</p>
 
-    <div class="mic-container">
-      <button id="recordBtn" class="mic-btn">🎤 Speak</button>
-      <button id="stopBtn" class="stop-btn" disabled>⏹ Stop</button>
+  <div class="noise"></div>
+
+  <div class="grid-bg"></div>
+
+  <header>
+    <div class="logo">AERO</div>
+    <div class="tagline">voice synthesis engine</div>
+  </header>
+
+  <main>
+
+    <div class="hero-text">
+      <span class="hero-line">speak</span>
+      <span class="hero-line accent">messy.</span>
+      <span class="hero-line">send</span>
+      <span class="hero-line accent2">perfect.</span>
     </div>
 
-    <div id="transcript" class="box messy">Messy speech appears here...</div>
-    <div id="refined" class="box polished">Polished email appears here...</div>
+    <div class="panel">
 
-    <button id="sendBtn" class="send-btn" disabled>Draft Email →</button>
-    <div id="status"></div>
-  </div>
+      <div class="mic-section">
+        <button id="recordBtn" class="mic-btn" title="Hold to speak">
+          <div class="mic-rings">
+            <div class="ring ring1"></div>
+            <div class="ring ring2"></div>
+            <div class="ring ring3"></div>
+          </div>
+          <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="2" width="6" height="13" rx="3"/>
+            <path d="M5 10a7 7 0 0 0 14 0"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="8" y1="22" x2="16" y2="22"/>
+          </svg>
+        </button>
+        <button id="stopBtn" class="stop-btn" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+        <div id="mic-label" class="mic-label">tap to speak</div>
+      </div>
+
+      <div class="boxes">
+        <div class="box-wrap">
+          <div class="box-label">
+            <span class="dot dot-red"></span>
+            raw input
+          </div>
+          <div id="transcript" class="box messy">your messy thoughts appear here...</div>
+        </div>
+
+        <div class="arrow-wrap">
+          <div class="arrow">
+            <svg viewBox="0 0 40 20" fill="none">
+              <path d="M0 10 L32 10 M24 2 L32 10 L24 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="arrow-label">groq synthesis</div>
+        </div>
+
+        <div class="box-wrap">
+          <div class="box-label">
+            <span class="dot dot-green"></span>
+            polished output
+          </div>
+          <div id="refined" class="box polished">your professional email appears here...</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="sendBtn" class="send-btn" disabled>
+          <span class="send-text">execute workflow</span>
+          <span class="send-sponsors">via TinyFish + Gradium</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="status" class="status"></div>
+
+    </div>
+
+    <div class="sponsors">
+      <span>powered by</span>
+      <span class="sponsor-tag">Groq</span>
+      <span class="divider">+</span>
+      <span class="sponsor-tag">TinyFish</span>
+      <span class="divider">+</span>
+      <span class="sponsor-tag">Gradium</span>
+    </div>
+
+  </main>
 
   <script>
     let recognition;
@@ -28,50 +112,56 @@
     const stopBtn   = document.getElementById('stopBtn');
     const transcriptBox = document.getElementById('transcript');
     const refinedBox    = document.getElementById('refined');
-    const sendBtn = document.getElementById('sendBtn');
-    const status  = document.getElementById('status');
+    const sendBtn  = document.getElementById('sendBtn');
+    const status   = document.getElementById('status');
+    const micLabel = document.getElementById('mic-label');
 
-    // Browser speech recognition
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SpeechRecognition();
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SR();
       recognition.continuous = false;
       recognition.interimResults = false;
 
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         transcriptBox.textContent = transcript;
+        transcriptBox.classList.add('has-content');
         refine(transcript);
       };
 
       recognition.onerror = (event) => {
-        setStatus(`Mic error: ${event.error}`, 'error');
-        recordBtn.disabled = false;
-        stopBtn.disabled = true;
+        setStatus(`mic error: ${event.error}`, 'error');
+        stopRecording();
       };
 
-      recognition.onend = () => {
-        recordBtn.disabled = false;
-        stopBtn.disabled = true;
-      };
+      recognition.onend = stopRecording;
+
     } else {
-      setStatus('Speech recognition not supported. Use Chrome.', 'error');
+      setStatus('use Chrome for speech recognition', 'error');
       recordBtn.disabled = true;
     }
 
     recordBtn.onclick = () => {
       recognition.start();
+      recordBtn.classList.add('recording');
       recordBtn.disabled = true;
       stopBtn.disabled = false;
-      setStatus('Listening...');
+      micLabel.textContent = 'listening...';
+      setStatus('');
     };
 
-    stopBtn.onclick = () => {
-      recognition.stop();
-    };
+    stopBtn.onclick = () => recognition.stop();
+
+    function stopRecording() {
+      recordBtn.classList.remove('recording');
+      recordBtn.disabled = false;
+      stopBtn.disabled = true;
+      micLabel.textContent = 'tap to speak';
+    }
 
     async function refine(transcript) {
-      setStatus('Refining...');
+      setStatus('synthesising...', 'loading');
+      refinedBox.textContent = '...';
       try {
         const res = await fetch('/refine', {
           method: 'POST',
@@ -81,43 +171,42 @@
         if (!res.ok) throw new Error(`/refine failed: ${res.status}`);
         const { refined } = await res.json();
         refinedBox.textContent = refined;
+        refinedBox.classList.add('has-content');
         sendBtn.disabled = false;
         setStatus('');
       } catch (err) {
-        setStatus(`Error: ${err.message}`, 'error');
+        setStatus(`error: ${err.message}`, 'error');
       }
     }
 
     sendBtn.onclick = async () => {
       sendBtn.disabled = true;
-      setStatus('Drafting email...');
+      setStatus('executing workflow...', 'loading');
 
       try {
-        // Step 1: TinyFish action
-        const actionRes = await fetch('/action', {
+        await fetch('/action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refined: refinedBox.textContent }),
         });
-        if (!actionRes.ok) throw new Error(`/action failed: ${actionRes.status}`);
 
-        setStatus('Email drafted! ✅ Playing confirmation...');
+        setStatus('email drafted — playing gradium confirmation...', 'loading');
 
-        // Step 2: Gradium voice confirmation — returns raw WAV audio
         const confirmRes = await fetch('/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refined: refinedBox.textContent }),
         });
+
         if (!confirmRes.ok) throw new Error(`/confirm failed: ${confirmRes.status}`);
 
         const audioBlob = await confirmRes.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
         new Audio(audioUrl).play();
 
-        setStatus('✅ Done! Gradium confirmed by voice.');
+        setStatus('✓ done', 'success');
       } catch (err) {
-        setStatus(`Error: ${err.message}`, 'error');
+        setStatus(`error: ${err.message}`, 'error');
       } finally {
         sendBtn.disabled = false;
       }
@@ -125,7 +214,7 @@
 
     function setStatus(msg, type = '') {
       status.textContent = msg;
-      status.style.color = type === 'error' ? '#ff4757' : '#00b894';
+      status.className = 'status ' + type;
     }
   </script>
 </body>
