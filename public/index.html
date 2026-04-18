@@ -78,15 +78,29 @@
         </div>
       </div>
 
+      <!-- Email meta row -->
+      <div id="email-meta" class="email-meta" style="display:none;">
+        <div class="meta-item">
+          <span class="meta-label">To</span>
+          <span id="meta-to" class="meta-value">—</span>
+        </div>
+        <div class="meta-divider"></div>
+        <div class="meta-item">
+          <span class="meta-label">Subject</span>
+          <span id="meta-subject" class="meta-value">—</span>
+        </div>
+      </div>
+
       <div class="actions">
         <button id="sendBtn" class="send-btn" disabled>
-          <span class="send-text">execute workflow
+          <span class="send-text">open in gmail
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12 5 19 12 12 19"/>
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
           </span>
-          <span class="send-sponsors">via TinyFish + Gradium</span>
+          <span class="send-sponsors">via Gradium + Gmail</span>
         </button>
       </div>
 
@@ -98,9 +112,9 @@
       <span>powered by</span>
       <span class="sponsor-tag">Groq</span>
       <span class="divider">+</span>
-      <span class="sponsor-tag">TinyFish</span>
-      <span class="divider">+</span>
       <span class="sponsor-tag">Gradium</span>
+      <span class="divider">+</span>
+      <span class="sponsor-tag">Gmail</span>
     </div>
 
   </main>
@@ -110,6 +124,7 @@
   let finalTranscript = '';
   let recognition;
   let silenceTimer;
+  let currentEmail = { refined: '', subject: '', to: '' };
 
   const recordBtn     = document.getElementById('recordBtn');
   const stopBtn       = document.getElementById('stopBtn');
@@ -118,8 +133,10 @@
   const sendBtn       = document.getElementById('sendBtn');
   const status        = document.getElementById('status');
   const micLabel      = document.getElementById('mic-label');
+  const emailMeta     = document.getElementById('email-meta');
+  const metaTo        = document.getElementById('meta-to');
+  const metaSubject   = document.getElementById('meta-subject');
 
-  // Hide the stop button — we don't need it anymore
   stopBtn.style.display = 'none';
 
   function createRecognition() {
@@ -143,7 +160,6 @@
       transcriptBox.textContent = (finalTranscript + interim).trim();
       transcriptBox.classList.add('has-content');
 
-      // Reset the 5-second silence timer every time speech is detected
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(autoStop, 5000);
     };
@@ -170,7 +186,6 @@
 
   recordBtn.onclick = () => {
     if (isRecording) {
-      // Second press = manual stop
       autoStop();
       return;
     }
@@ -180,6 +195,7 @@
     transcriptBox.classList.remove('has-content');
     refinedBox.textContent = 'your professional email appears here...';
     refinedBox.classList.remove('has-content');
+    emailMeta.style.display = 'none';
     sendBtn.disabled = true;
     setStatus('');
 
@@ -195,8 +211,6 @@
 
     recordBtn.classList.add('recording');
     micLabel.textContent = 'listening — tap again or wait 5s to stop';
-
-    // Auto-stop after 5s of initial silence too
     silenceTimer = setTimeout(autoStop, 5000);
   };
 
@@ -224,6 +238,17 @@
     micLabel.textContent = 'tap to speak';
   }
 
+  // Build Gmail compose URL
+  function gmailComposeUrl(to, subject, body) {
+    const params = new URLSearchParams();
+    params.set('view', 'cm');
+    params.set('fs', '1');
+    if (to) params.set('to', to);
+    if (subject) params.set('su', subject);
+    if (body) params.set('body', body);
+    return 'https://mail.google.com/mail/?' + params.toString();
+  }
+
   async function refine(transcript) {
     setStatus('synthesising...', 'loading');
     refinedBox.textContent = '...';
@@ -234,40 +259,65 @@
         body: JSON.stringify({ transcript }),
       });
       if (!res.ok) throw new Error('/refine failed: ' + res.status);
-      const { refined } = await res.json();
-      refinedBox.textContent = refined;
+
+      const data = await res.json();
+      currentEmail = {
+        refined: data.refined,
+        subject: data.subject,
+        to: data.to,
+      };
+
+      refinedBox.textContent = data.refined;
       refinedBox.classList.add('has-content');
+
+      // Show meta row
+      metaTo.textContent = data.to || '(not specified)';
+      metaSubject.textContent = data.subject || '(not specified)';
+      emailMeta.style.display = 'flex';
+
       sendBtn.disabled = false;
       setStatus('');
+
+      // Auto-open Gmail and play voice summary
+      openGmailAndConfirm();
+
     } catch (err) {
       setStatus('error: ' + err.message, 'error');
     }
   }
 
-  sendBtn.onclick = async () => {
-    sendBtn.disabled = true;
-    setStatus('executing workflow...', 'loading');
+  async function openGmailAndConfirm() {
+    // Open Gmail compose in a new tab
+    const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
+    window.open(url, '_blank');
+
+    setStatus('opening gmail — playing summary...', 'loading');
+
+    // Play Gradium voice summary
     try {
-      await fetch('/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refined: refinedBox.textContent }),
-      });
-      setStatus('email drafted — playing gradium confirmation...', 'loading');
       const confirmRes = await fetch('/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refined: refinedBox.textContent }),
+        body: JSON.stringify({
+          refined: currentEmail.refined,
+          subject: currentEmail.subject,
+          to: currentEmail.to,
+        }),
       });
       if (!confirmRes.ok) throw new Error('/confirm failed: ' + confirmRes.status);
       const audioBlob = await confirmRes.blob();
       new Audio(URL.createObjectURL(audioBlob)).play();
-      setStatus('✓ done', 'success');
+      setStatus('✓ gmail opened — ready to send', 'success');
     } catch (err) {
-      setStatus('error: ' + err.message, 'error');
-    } finally {
-      sendBtn.disabled = false;
+      // Voice failed but Gmail still opened — not a fatal error
+      setStatus('✓ gmail opened', 'success');
     }
+  }
+
+  // "Open in Gmail" button — re-opens Gmail (in case user closed it)
+  sendBtn.onclick = () => {
+    if (!currentEmail.refined) return;
+    openGmailAndConfirm();
   };
 
   function setStatus(msg, type = '') {
