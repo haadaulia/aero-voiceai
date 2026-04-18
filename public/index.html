@@ -11,7 +11,6 @@
 <body>
 
   <div class="noise"></div>
-
   <div class="grid-bg"></div>
 
   <header>
@@ -31,7 +30,7 @@
     <div class="panel">
 
       <div class="mic-section">
-        <button id="recordBtn" class="mic-btn" title="Hold to speak">
+        <button id="recordBtn" class="mic-btn" title="Click to speak">
           <div class="mic-rings">
             <div class="ring ring1"></div>
             <div class="ring ring2"></div>
@@ -81,12 +80,13 @@
 
       <div class="actions">
         <button id="sendBtn" class="send-btn" disabled>
-          <span class="send-text">execute workflow</span>
+          <span class="send-text">execute workflow
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </span>
           <span class="send-sponsors">via TinyFish + Gradium</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
         </button>
       </div>
 
@@ -107,6 +107,7 @@
 
   <script>
     let recognition;
+    let fullTranscript = '';
 
     const recordBtn = document.getElementById('recordBtn');
     const stopBtn   = document.getElementById('stopBtn');
@@ -119,22 +120,40 @@
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SR();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;       // keeps listening through pauses
+      recognition.interimResults = true;   // shows words as you speak
 
       recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        transcriptBox.textContent = transcript;
+        let interim = '';
+        fullTranscript = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            fullTranscript += event.results[i][0].transcript + ' ';
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+
+        // Show combined final + interim in real time
+        transcriptBox.textContent = (fullTranscript + interim).trim();
         transcriptBox.classList.add('has-content');
-        refine(transcript);
       };
 
       recognition.onerror = (event) => {
+        // Ignore 'no-speech' — it fires on pauses with continuous mode
+        if (event.error === 'no-speech') return;
         setStatus(`mic error: ${event.error}`, 'error');
         stopRecording();
       };
 
-      recognition.onend = stopRecording;
+      // With continuous=true, onend only fires when we call .stop()
+      recognition.onend = () => {
+        stopRecording();
+        if (fullTranscript.trim()) {
+          refine(fullTranscript.trim());
+        }
+      };
 
     } else {
       setStatus('use Chrome for speech recognition', 'error');
@@ -142,14 +161,22 @@
     }
 
     recordBtn.onclick = () => {
+      fullTranscript = '';
+      transcriptBox.textContent = 'listening...';
+      transcriptBox.classList.remove('has-content');
+      refinedBox.textContent = 'your professional email appears here...';
+      refinedBox.classList.remove('has-content');
+      sendBtn.disabled = true;
+
       recognition.start();
       recordBtn.classList.add('recording');
       recordBtn.disabled = true;
       stopBtn.disabled = false;
-      micLabel.textContent = 'listening...';
+      micLabel.textContent = 'listening — tap stop when done';
       setStatus('');
     };
 
+    // User manually stops — triggers onend which calls refine
     stopBtn.onclick = () => recognition.stop();
 
     function stopRecording() {
