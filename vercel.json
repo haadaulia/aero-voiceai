@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/refine", "destination": "/api/refine" },
+    { "source": "/confirm", "destination": "/api/confirm" },
+    { "source": "/(.*)", "destination": "/public/$1" }
+  ]
+}

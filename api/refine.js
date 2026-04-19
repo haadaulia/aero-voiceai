@@ -1,19 +1,13 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const app = express();
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-app.use(cors());
-app.use(express.static('public'));
-app.use(express.json());
-
-// 1. Voice → structured email JSON (Groq)
-app.post('/refine', async (req, res) => {
   const { transcript } = req.body;
   const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'GROQ_API_KEY not set in .env' });
+    return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
   }
 
   try {
@@ -62,53 +56,4 @@ app.post('/refine', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Groq request failed', details: err.message });
   }
-});
-
-// 2. Gradium voice summary — reads back a short summary (not the full email)
-app.post('/confirm', async (req, res) => {
-  const { subject, to } = req.body;
-  const apiKey = process.env.GRADIUM_API_KEY;
-
-  if (!apiKey) {
-    return res.status(500).json({ error: 'GRADIUM_API_KEY not set in .env' });
-  }
-
-  let summary;
-  if (to && subject) {
-    summary = `Opening Gmail to ${to} with the subject: ${subject}. Your message is ready to send.`;
-  } else if (subject) {
-    summary = `Opening Gmail with the subject: ${subject}. Your message is ready to send.`;
-  } else {
-    summary = 'Your email is ready. Opening Gmail now.';
-  }
-
-  try {
-    const response = await fetch('https://api.gradium.ai/api/post/speech/tts', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        text: summary,
-        voice_id: 'YTpq7expH9539ERJ',
-        output_format: 'wav',
-        only_audio: true,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      return res.status(response.status).json({ error: 'Gradium TTS failed', details: err });
-    }
-
-    const audioBuffer = await response.arrayBuffer();
-    res.set('Content-Type', 'audio/wav');
-    res.send(Buffer.from(audioBuffer));
-
-  } catch (err) {
-    res.status(500).json({ error: 'Gradium request failed', details: err.message });
-  }
-});
-
-app.listen(3000, () => console.log('🎤 Aero: http://localhost:3000'));
+}
