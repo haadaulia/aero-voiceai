@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Aero — Voice to Action</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
@@ -19,7 +20,6 @@
   </header>
 
   <main>
-
     <div class="hero-text">
       <span class="hero-line">speak</span>
       <span class="hero-line accent">messy.</span>
@@ -28,7 +28,6 @@
     </div>
 
     <div class="panel">
-
       <div class="mic-section">
         <button id="recordBtn" class="mic-btn" title="Click to speak">
           <div class="mic-rings">
@@ -53,13 +52,9 @@
 
       <div class="boxes">
         <div class="box-wrap">
-          <div class="box-label">
-            <span class="dot dot-red"></span>
-            raw input
-          </div>
+          <div class="box-label"><span class="dot dot-red"></span>raw input</div>
           <div id="transcript" class="box messy">your messy thoughts appear here...</div>
         </div>
-
         <div class="arrow-wrap">
           <div class="arrow">
             <svg viewBox="0 0 40 20" fill="none">
@@ -68,25 +63,20 @@
           </div>
           <div class="arrow-label">groq synthesis</div>
         </div>
-
         <div class="box-wrap">
-          <div class="box-label">
-            <span class="dot dot-green"></span>
-            polished output
-          </div>
+          <div class="box-label"><span class="dot dot-green"></span>polished output</div>
           <div id="refined" class="box polished">your professional email appears here...</div>
         </div>
       </div>
 
-      <!-- Email meta -->
       <div id="email-meta" class="email-meta" style="display:none;">
         <div class="meta-pill">
           <span class="meta-key">to</span>
-          <span id="meta-to" class="meta-val">—</span>
+          <span id="meta-to" class="meta-val">-</span>
         </div>
         <div class="meta-pill">
           <span class="meta-key">subject</span>
-          <span id="meta-subject" class="meta-val">—</span>
+          <span id="meta-subject" class="meta-val">-</span>
         </div>
       </div>
 
@@ -104,7 +94,6 @@
       </div>
 
       <div id="status" class="status"></div>
-
     </div>
 
     <div class="sponsors">
@@ -115,7 +104,6 @@
       <span class="divider">+</span>
       <span class="sponsor-tag">Gmail</span>
     </div>
-
   </main>
 
 <script>
@@ -142,9 +130,30 @@
   function stopAudio() {
     if (currentAudio) {
       currentAudio.pause();
-      currentAudio.currentTime = 0;
       currentAudio = null;
     }
+  }
+
+  function setStatus(msg, type) {
+    status.textContent = msg;
+    status.className = 'status ' + (type || '');
+  }
+
+  function gmailComposeUrl(to, subject, body) {
+    const p = new URLSearchParams();
+    p.set('view', 'cm');
+    p.set('fs', '1');
+    if (to) p.set('to', to);
+    if (subject) p.set('su', subject);
+    if (body) p.set('body', body);
+    return 'https://mail.google.com/mail/?' + p.toString();
+  }
+
+  // --- Recording ---
+
+  if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+    setStatus('use Chrome for speech recognition', 'error');
+    recordBtn.disabled = true;
   }
 
   function createRecognition() {
@@ -154,53 +163,31 @@
     r.continuous = true;
     r.interimResults = true;
     r.lang = 'en-US';
-
     r.onresult = (event) => {
       let interim = '';
       finalTranscript = '';
       for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + ' ';
-        } else {
-          interim += event.results[i][0].transcript;
-        }
+        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
+        else interim += event.results[i][0].transcript;
       }
       transcriptBox.textContent = (finalTranscript + interim).trim();
       transcriptBox.classList.add('has-content');
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(autoStop, 5000);
     };
-
-    r.onerror = (event) => {
-      if (event.error === 'no-speech') return;
-      setStatus('mic error: ' + event.error, 'error');
+    r.onerror = (e) => {
+      if (e.error === 'no-speech') return;
+      setStatus('mic error: ' + e.error, 'error');
       forceStop();
     };
-
-    r.onend = () => {
-      if (isRecording) {
-        try { r.start(); } catch(e) {}
-      }
-    };
-
+    r.onend = () => { if (isRecording) try { r.start(); } catch(e) {} };
     return r;
   }
 
-  if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-    setStatus('use Chrome for speech recognition', 'error');
-    recordBtn.disabled = true;
-  }
-
   recordBtn.onclick = () => {
-    // Always stop any playing audio first
     stopAudio();
+    if (isRecording) { autoStop(); return; }
 
-    if (isRecording) {
-      autoStop();
-      return;
-    }
-
-    // Reset state for a fresh recording
     finalTranscript = '';
     transcriptBox.textContent = 'listening...';
     transcriptBox.classList.remove('has-content');
@@ -212,14 +199,7 @@
 
     recognition = createRecognition();
     isRecording = true;
-
-    try {
-      recognition.start();
-    } catch(e) {
-      setStatus('could not start mic', 'error');
-      isRecording = false;
-      return;
-    }
+    try { recognition.start(); } catch(e) { setStatus('could not start mic', 'error'); isRecording = false; return; }
 
     recordBtn.classList.add('recording');
     micLabel.textContent = 'listening — tap again or wait 5s to stop';
@@ -231,34 +211,20 @@
     if (!isRecording) return;
     forceStop();
     const text = finalTranscript.trim() || transcriptBox.textContent.trim();
-    if (text && text !== 'listening...') {
-      refine(text);
-    } else {
-      setStatus('nothing captured — try again', 'error');
-    }
+    if (text && text !== 'listening...') refine(text);
+    else setStatus('nothing captured — try again', 'error');
   }
 
   function forceStop() {
     isRecording = false;
     clearTimeout(silenceTimer);
-    if (recognition) {
-      try { recognition.stop(); } catch(e) {}
-      try { recognition.abort(); } catch(e) {}
-    }
+    if (recognition) { try { recognition.stop(); } catch(e) {} try { recognition.abort(); } catch(e) {} }
     recordBtn.classList.remove('recording');
     recordBtn.disabled = false;
     micLabel.textContent = 'tap to speak';
   }
 
-  function gmailComposeUrl(to, subject, body) {
-    const params = new URLSearchParams();
-    params.set('view', 'cm');
-    params.set('fs', '1');
-    if (to) params.set('to', to);
-    if (subject) params.set('su', subject);
-    if (body) params.set('body', body);
-    return 'https://mail.google.com/mail/?' + params.toString();
-  }
+  // --- Refine ---
 
   async function refine(transcript) {
     setStatus('synthesising...', 'loading');
@@ -269,59 +235,38 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript }),
       });
-      if (!res.ok) throw new Error('/refine failed: ' + res.status);
-
+      if (!res.ok) throw new Error('refine failed: ' + res.status);
       const data = await res.json();
       currentEmail = { refined: data.refined, subject: data.subject, to: data.to };
-
       refinedBox.textContent = data.refined;
       refinedBox.classList.add('has-content');
-
       metaTo.textContent = data.to || 'not specified';
       metaSubject.textContent = data.subject || 'not specified';
       emailMeta.style.display = 'flex';
-
       sendBtn.disabled = false;
       setStatus('ready — press button to open gmail', 'success');
-
     } catch (err) {
       setStatus('error: ' + err.message, 'error');
     }
   }
 
-  let cachedAudioBlob = null;
-
-  async function prefetchAudio() {
-    cachedAudioBlob = null;
-    try {
-      const confirmRes = await fetch('/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
-      });
-      if (!confirmRes.ok) return;
-      cachedAudioBlob = await confirmRes.blob();
-    } catch (err) {
-      // non-critical
-    }
-  }
+  // --- Send ---
 
   sendBtn.onclick = () => {
     if (!currentEmail.refined) return;
     stopAudio();
 
-    // Open Gmail synchronously — must happen before any await or browser blocks popup
-    const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
-    window.open(url, '_blank');
+    // Open Gmail immediately — sync, no awaits before this
+    window.open(gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined), '_blank');
     setStatus('gmail opened', 'success');
 
-    // Fetch and play audio after — non-blocking
+    // Play audio — fire and forget with .then(), no async/await
     fetch('/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
     })
-    .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
+    .then(r => r.blob())
     .then(blob => {
       currentAudio = new Audio(URL.createObjectURL(blob));
       currentAudio.play();
@@ -329,11 +274,6 @@
     })
     .catch(() => {});
   };
-
-    function setStatus(msg, type = '') {
-    status.textContent = msg;
-    status.className = 'status ' + type;
-  }
 </script>
 </body>
 </html>
