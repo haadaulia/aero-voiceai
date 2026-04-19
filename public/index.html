@@ -78,16 +78,15 @@
         </div>
       </div>
 
-      <!-- Email meta row -->
+      <!-- Email meta -->
       <div id="email-meta" class="email-meta" style="display:none;">
-        <div class="meta-item">
-          <span class="meta-label">To</span>
-          <span id="meta-to" class="meta-value">—</span>
+        <div class="meta-pill">
+          <span class="meta-key">to</span>
+          <span id="meta-to" class="meta-val">—</span>
         </div>
-        <div class="meta-divider"></div>
-        <div class="meta-item">
-          <span class="meta-label">Subject</span>
-          <span id="meta-subject" class="meta-value">—</span>
+        <div class="meta-pill">
+          <span class="meta-key">subject</span>
+          <span id="meta-subject" class="meta-val">—</span>
         </div>
       </div>
 
@@ -125,6 +124,7 @@
   let recognition;
   let silenceTimer;
   let currentEmail = { refined: '', subject: '', to: '' };
+  let currentAudio = null;
 
   const recordBtn     = document.getElementById('recordBtn');
   const stopBtn       = document.getElementById('stopBtn');
@@ -138,6 +138,14 @@
   const metaSubject   = document.getElementById('meta-subject');
 
   stopBtn.style.display = 'none';
+
+  function stopAudio() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+  }
 
   function createRecognition() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -159,7 +167,6 @@
       }
       transcriptBox.textContent = (finalTranscript + interim).trim();
       transcriptBox.classList.add('has-content');
-
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(autoStop, 5000);
     };
@@ -185,11 +192,15 @@
   }
 
   recordBtn.onclick = () => {
+    // Always stop any playing audio first
+    stopAudio();
+
     if (isRecording) {
       autoStop();
       return;
     }
 
+    // Reset state for a fresh recording
     finalTranscript = '';
     transcriptBox.textContent = 'listening...';
     transcriptBox.classList.remove('has-content');
@@ -206,6 +217,7 @@
       recognition.start();
     } catch(e) {
       setStatus('could not start mic', 'error');
+      isRecording = false;
       return;
     }
 
@@ -238,7 +250,6 @@
     micLabel.textContent = 'tap to speak';
   }
 
-  // Build Gmail compose URL
   function gmailComposeUrl(to, subject, body) {
     const params = new URLSearchParams();
     params.set('view', 'cm');
@@ -261,24 +272,18 @@
       if (!res.ok) throw new Error('/refine failed: ' + res.status);
 
       const data = await res.json();
-      currentEmail = {
-        refined: data.refined,
-        subject: data.subject,
-        to: data.to,
-      };
+      currentEmail = { refined: data.refined, subject: data.subject, to: data.to };
 
       refinedBox.textContent = data.refined;
       refinedBox.classList.add('has-content');
 
-      // Show meta row
-      metaTo.textContent = data.to || '(not specified)';
-      metaSubject.textContent = data.subject || '(not specified)';
+      metaTo.textContent = data.to || 'not specified';
+      metaSubject.textContent = data.subject || 'not specified';
       emailMeta.style.display = 'flex';
 
       sendBtn.disabled = false;
       setStatus('');
 
-      // Auto-open Gmail and play voice summary
       openGmailAndConfirm();
 
     } catch (err) {
@@ -287,36 +292,30 @@
   }
 
   async function openGmailAndConfirm() {
-    // Open Gmail compose in a new tab
     const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
     window.open(url, '_blank');
-
     setStatus('opening gmail — playing summary...', 'loading');
 
-    // Play Gradium voice summary
     try {
       const confirmRes = await fetch('/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          refined: currentEmail.refined,
-          subject: currentEmail.subject,
-          to: currentEmail.to,
-        }),
+        body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
       });
       if (!confirmRes.ok) throw new Error('/confirm failed: ' + confirmRes.status);
       const audioBlob = await confirmRes.blob();
-      new Audio(URL.createObjectURL(audioBlob)).play();
+      currentAudio = new Audio(URL.createObjectURL(audioBlob));
+      currentAudio.play();
+      currentAudio.onended = () => { currentAudio = null; };
       setStatus('✓ gmail opened — ready to send', 'success');
     } catch (err) {
-      // Voice failed but Gmail still opened — not a fatal error
       setStatus('✓ gmail opened', 'success');
     }
   }
 
-  // "Open in Gmail" button — re-opens Gmail (in case user closed it)
   sendBtn.onclick = () => {
     if (!currentEmail.refined) return;
+    stopAudio();
     openGmailAndConfirm();
   };
 
