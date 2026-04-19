@@ -284,9 +284,6 @@
       sendBtn.disabled = false;
       setStatus('ready — press button to open gmail', 'success');
 
-      // Pre-fetch audio in background while user reads the email
-      prefetchAudio();
-
     } catch (err) {
       setStatus('error: ' + err.message, 'error');
     }
@@ -312,26 +309,27 @@
   sendBtn.onclick = () => {
     if (!currentEmail.refined) return;
     stopAudio();
+    openGmailAndConfirm();
+  };
 
-    // Open Gmail synchronously on click — browser won't block this
+  async function openGmailAndConfirm() {
     const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
-    const gmailTab = window.open(url, '_blank');
+    window.open(url, '_blank');
     setStatus('gmail opened', 'success');
 
-    // Then fetch and play audio asynchronously
-    fetch('/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
-    })
-    .then(r => r.blob())
-    .then(blob => {
+    try {
+      const confirmRes = await fetch('/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
+      });
+      if (!confirmRes.ok) return;
+      const blob = await confirmRes.blob();
       currentAudio = new Audio(URL.createObjectURL(blob));
       currentAudio.play();
       currentAudio.onended = () => { currentAudio = null; };
-    })
-    .catch(() => {});
-  };
+    } catch (err) {}
+  }
 
     function setStatus(msg, type = '') {
     status.textContent = msg;
