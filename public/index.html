@@ -282,44 +282,52 @@
       emailMeta.style.display = 'flex';
 
       sendBtn.disabled = false;
-      setStatus('');
+      setStatus('ready — press button to open gmail', 'success');
 
-      openGmailAndConfirm();
+      // Pre-fetch audio in background while user reads the email
+      prefetchAudio();
 
     } catch (err) {
       setStatus('error: ' + err.message, 'error');
     }
   }
 
-  async function openGmailAndConfirm() {
-    const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
-    window.open(url, '_blank');
-    setStatus('opening gmail — playing summary...', 'loading');
+  let cachedAudioBlob = null;
 
+  async function prefetchAudio() {
+    cachedAudioBlob = null;
     try {
       const confirmRes = await fetch('/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
       });
-      if (!confirmRes.ok) throw new Error('/confirm failed: ' + confirmRes.status);
-      const audioBlob = await confirmRes.blob();
-      currentAudio = new Audio(URL.createObjectURL(audioBlob));
-      currentAudio.play();
-      currentAudio.onended = () => { currentAudio = null; };
-      setStatus('✓ gmail opened — ready to send', 'success');
+      if (!confirmRes.ok) return;
+      cachedAudioBlob = await confirmRes.blob();
     } catch (err) {
-      setStatus('✓ gmail opened', 'success');
+      // non-critical
     }
   }
 
   sendBtn.onclick = () => {
     if (!currentEmail.refined) return;
     stopAudio();
-    openGmailAndConfirm();
+
+    // Open Gmail instantly on click
+    const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
+    window.open(url, '_blank');
+    setStatus('gmail opened', 'success');
+
+    // Play audio right away if pre-fetched, otherwise skip
+    if (cachedAudioBlob) {
+      currentAudio = new Audio(URL.createObjectURL(cachedAudioBlob));
+      currentAudio.play();
+      currentAudio.onended = () => { currentAudio = null; };
+      cachedAudioBlob = null;
+    }
   };
 
-  function setStatus(msg, type = '') {
+    function setStatus(msg, type = '') {
     status.textContent = msg;
     status.className = 'status ' + type;
   }
