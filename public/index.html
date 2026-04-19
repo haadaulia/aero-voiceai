@@ -313,18 +313,24 @@
     if (!currentEmail.refined) return;
     stopAudio();
 
-    // Open Gmail instantly on click
+    // Open Gmail synchronously on click — browser won't block this
     const url = gmailComposeUrl(currentEmail.to, currentEmail.subject, currentEmail.refined);
-    window.open(url, '_blank');
+    const gmailTab = window.open(url, '_blank');
     setStatus('gmail opened', 'success');
 
-    // Play audio right away if pre-fetched, otherwise skip
-    if (cachedAudioBlob) {
-      currentAudio = new Audio(URL.createObjectURL(cachedAudioBlob));
+    // Then fetch and play audio asynchronously
+    fetch('/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: currentEmail.subject, to: currentEmail.to }),
+    })
+    .then(r => r.blob())
+    .then(blob => {
+      currentAudio = new Audio(URL.createObjectURL(blob));
       currentAudio.play();
       currentAudio.onended = () => { currentAudio = null; };
-      cachedAudioBlob = null;
-    }
+    })
+    .catch(() => {});
   };
 
     function setStatus(msg, type = '') {
