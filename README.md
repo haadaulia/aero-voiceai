@@ -47,3 +47,7 @@ aero-voiceai/
 ```bash
 npx vercel dev
 ```
+
+## Contributors
+
+Built by Haad Arshad Aulia, Muhammad Ghufran Luqman, Eesa Adam, and Usman Rahman.
